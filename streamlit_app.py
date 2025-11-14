@@ -4,81 +4,734 @@ import io
 import random
 from collections import defaultdict
 import math
-from streamlit_gsheets import GSheetsConnection  # New import
 
-# --- NO MORE DEFAULT DATA! ---
-# All data will be loaded from Google Sheets
+# --- DEFAULT DATA (PRE-FILLED TSV) ---
+# These strings will be used to create the default editable tables
+
+DEFAULT_CHAPTERS_TSV = """
+Chapter	Chapter Power Required
+1	100
+2	140
+3	155
+4	200
+5	265
+6	290
+7	310
+8	390
+9	450
+10	570
+11	630
+12	890
+13	920
+14	1380
+15	1940.555556
+16	2910.833333
+17	4366.25
+18	6549.375
+19	9824.0625
+20	14736.09375
+21	33156.21094
+22	49734.31641
+23	74601.47461
+24	251779.9768
+25	377669.9652
+26	566504.9478
+27	849757.4217
+28	1274636.133
+29	1911954.199
+30	2867931.298
+31	6452845.421
+32	9679268.132
+33	14518902.2
+34	21778353.3
+35	32667529.94
+36	73501942.38
+37	110252913.6
+38	165379370.3
+39	372103583.3
+40	558155374.9
+41	837233062.4
+42	1255849594
+43	1883774390
+44	4238492378
+45	6357738567
+46	9536607851
+47	21457367665
+48	32186051498
+49	244412828559
+50	366619242839
+"""
+
+DEFAULT_PM_TIERS_TSV = """
+Tier	Tier Start	Max Bluestar Count	PM
+1	0	15000	1.000693387
+2	15000	30000	1.000693387
+3	30000	45000	1.000693387
+4	45000	60000	1.000693387
+5	60000	75000	1.000693387
+6	75000	90000	1.000693387
+7	90000	105000	1.000693387
+8	105000	120000	1.000693387
+9	120000	135000	1.000693387
+10	135000	150000	1.000693387
+11	150000	165000	1.000693387
+12	165000	180000	1.000693387
+13	180000	195000	1.000693387
+14	195000	210000	1.000693387
+15	210000	225000	1.000693387
+16	225000	240000	1.000693387
+17	240000	255000	1.000693387
+18	255000	270000	1.000693387
+19	270000	285000	1.000693387
+20	285000	300000	1.000693387
+21	300000	315000	1.000693387
+"""
+
+DEFAULT_CARD_BLUE_COMMON_TSV = """
+Level	Duplicates Required	Bluestar Reward	CoinsRequired
+2	8	16	50
+3	10	16	100
+4	11	18	150
+5	13	18	200
+6	14	19	250
+7	16	19	300
+8	18	21	350
+9	19	21	400
+10	21	22	450
+11	22	22	500
+12	24	24	550
+13	26	24	600
+14	27	26	650
+15	29	26	700
+16	30	27	750
+17	32	27	800
+18	34	29	850
+19	35	29	900
+20	37	30	950
+21	38	30	1000
+22	40	32	1050
+23	42	32	1100
+24	43	34	1150
+25	45	34	1200
+26	46	35	1250
+27	48	35	1300
+28	50	37	1350
+29	51	37	1400
+30	53	38	1450
+31	54	38	1500
+32	56	40	1550
+33	58	40	1600
+34	59	42	1650
+35	61	42	1700
+36	62	43	1750
+37	64	43	1800
+38	66	45	1850
+39	67	45	1900
+40	69	46	1950
+41	70	46	2000
+42	72	48	2050
+43	74	48	2100
+44	75	50	2150
+45	77	50	2200
+46	78	51	2250
+47	80	51	2300
+48	82	53	2350
+49	83	53	2400
+50	85	54	2450
+"""
+
+DEFAULT_CARD_GOLD_TSV = """
+Level	Duplicates Required	Bluestar Reward	CoinsRequired
+2	12	24	50
+3	14	24	100
+4	17	26	150
+5	19	26	200
+6	22	29	250
+7	24	29	300
+8	26	31	350
+9	29	31	400
+10	31	34	450
+11	34	34	500
+12	36	36	550
+13	38	36	600
+14	41	38	650
+15	43	38	700
+16	46	41	750
+17	48	41	800
+18	50	43	850
+19	53	43	900
+20	55	46	950
+21	58	46	1000
+22	60	48	1050
+23	62	48	1100
+24	65	50	1150
+25	67	50	1200
+26	70	53	1250
+27	72	53	1300
+28	74	55	1350
+29	77	55	1400
+30	79	58	1450
+31	82	58	1500
+32	84	60	1550
+33	86	60	1600
+34	89	62	1650
+35	91	62	1700
+36	94	65	1750
+37	96	65	1800
+38	98	67	1850
+39	101	67	1900
+40	103	70	1950
+41	106	70	2000
+42	108	72	2050
+43	110	72	2100
+44	113	74	2150
+45	115	74	2200
+46	118	77	2250
+47	120	77	2300
+48	122	79	2350
+49	125	79	2400
+50	127	82	2450
+"""
+
+DEFAULT_CARD_UNIQUE_TSV = """
+Level	Duplicates Required	Bluestar Reward	CoinsRequired
+2	2	120	250
+3	4	168	375
+4	8	216	500
+5	15	264	625
+6	25	312	750
+7	40	360	875
+8	60	408	1000
+9	90	456	1125
+10	150	504	1250
+"""
+
+DEFAULT_DUPE_GRANT_SHARED_TSV = """
+CardLevel	AvrgDupReq
+1	0.6
+2	0.6
+3	0.6
+4	0.6
+5	0.6
+6	0.6
+7	0.6
+8	0.6
+9	0.6
+10	0.6
+11	0.6
+12	0.6
+13	0.6
+14	0.6
+15	0.6
+16	0.6
+17	0.6
+18	0.6
+19	0.6
+20	0.6
+21	0.58
+22	0.58
+23	0.58
+24	0.58
+25	0.58
+26	0.58
+27	0.58
+28	0.58
+29	0.58
+30	0.58
+31	0.58
+32	0.58
+33	0.58
+34	0.58
+35	0.58
+36	0.58
+37	0.58
+38	0.58
+39	0.58
+40	0.58
+41	0.48
+42	0.48
+43	0.48
+44	0.48
+45	0.48
+46	0.48
+47	0.48
+48	0.48
+49	0.48
+50	0.48
+"""
+
+DEFAULT_DUPE_GRANT_UNIQUE_TSV = """
+CardLevel	AvrgDupReq
+1	0.28
+2	0.28
+3	0.28
+4	0.28
+5	0.2
+6	0.2
+7	0.15
+8	0.15
+9	0.15
+10	0.15
+"""
+
+DEFAULT_PACK_EVOLUTION_TSV = """
+StartingRarity	StandardPackT1	StandardPackT2	StandardPackT3	StandardPackT4	StandardPackT5
+StandardPackT1	0.3164	0.4391	0.201	0.0405	0.003
+StandardPackT2	0	0.3336	0.4559	0.2004	0.0101
+StandardPackT3	0	0	0.4096	0.5697	0.0207
+StandardPackT4	0	0	0	0.96	0.04
+StandardPackT5	0	0	0	0	1
+"""
+
+DEFAULT_PACK_LOOT_SLOTS_TSV = """
+Pack	BonusItemSlot
+StandardPackT1	1
+StandardPackT2	2
+StandardPackT3	3
+StandardPackT4	4
+StandardPackT5	6
+EndOfChapterPack	5
+HeroPack	3
+PetPack	4
+GearPack	3
+"""
+
+DEFAULT_PACK_CARD_DRAWS_TSV = """
+Pack	Unlocked Card Count	AvrgCardType
+StandardPackT1	36	2
+StandardPackT1	71	2.5
+StandardPackT2	36	2
+StandardPackT2	66	2.5
+StandardPackT3	36	2.5
+StandardPackT3	66	3
+StandardPackT4	36	3
+StandardPackT4	56	3.5
+StandardPackT4	86	4
+StandardPackT5	36	4
+StandardPackT5	76	4.5
+EndOfChapterPack	36	3
+EndOfChapterPack	41	2.5
+EndOfChapterPack	71	3
+EndOfChapterPack	91	3.5
+HeroPack	36	2.5
+HeroPack	66	3
+PetPack	36	2.5
+PetPack	66	3
+GearPack	36	2.5
+GearPack	66	3
+"""
+
+DEFAULT_PACK_CARD_BOOSTS_TSV = """
+Pack	SharedCardBoost	UniqueCardBoost
+StandardPackT1	0	0
+StandardPackT2	0.15	0.05
+StandardPackT3	0.25	0.15
+StandardPackT4	0.3	0.25
+StandardPackT5	0.5	0.4
+EndOfChapterPack	0.12	0.06
+HeroPack	0.25	0.15
+PetPack	0.25	0.15
+GearPack	0.25	0.15
+"""
+
+DEFAULT_PACK_LOOT_PROBS_TSV = """
+Pack	HeroUpgradeCards	HeroTokens	PetFood	Spirit Stone	Pet Eggs	Designs	RandomGearPiece	Coins	S-Stone	Ever Stone	Diamonds
+StandardPackT1	0	0	0	0	0	0	0	1	0	0	0
+StandardPackT2	0	0	0.3	0.3	0.3	0.4	0.4	1	0	0	0
+StandardPackT3	0.1	0.1	0.5	0.2	0.2	0.3	0.5	1	0	0	0.15
+StandardPackT4	0.2	0.2	1	0.5	0.2	0.5	0.5	1	0.01	0.05	0.25
+StandardPackT5	0.5	0.5	1	1	1	1	0.5	1	0.5	0.1	0.5
+EndOfChapterPack	0.5	0.5	0.5	0.5	0.5	0.5	0.5	1	0	0	0.1
+HeroPack	1	1	0	0	0	0	0	1	0	0	0.1
+PetPack	0	0	1	1	1	0	0	1	0	0.02	0.1
+GearPack	0	0	0	0	0	1	0.5	1	0.01	0	0.1
+"""
+
+DEFAULT_PACK_LOOT_AMOUNTS_TSV = """
+Pack	HeroUpgradeCards	HeroTokens	PetFood	Spirit Stone	Pet Eggs	Designs	RandomGearPiece	Coins	S-Stone	Ever Stone	Diamonds
+StandardPackT1	0	0	0	0	0	0	0	80	0	0	0
+StandardPackT2	0	0	20	30	30	50	2	120	0	0	0
+StandardPackT3	15	5	20	200	50	300	3	300	0	0	15
+StandardPackT4	30	10	50	400	100	300	2	600	1	1	15
+StandardPackT5	200	150	200	500	300	300	2	1500	1	2	15
+EndOfChapterPack	40	100	200	80	50	50	1	200	0	0	15
+HeroPack	75	250	0	0	0	0	0	300	0	0	15
+PetPack	0	0	150	300	150	0	0	300	0	2	15
+GearPack	0	0	0	0	0	250	3	300	1	0	15
+"""
+
+DEFAULT_PACK_LOOT_VARIANCE_TSV = """
+Pack	Bottom	Top
+StandardPackT1	0.7	1.2
+StandardPackT2	0.7	1.3
+StandardPackT3	0.7	1.4
+StandardPackT4	0.7	1.5
+StandardPackT5	0.7	1.6
+EndOfChapterPack	0.7	1.7
+HeroPack	0.7	1.4
+PetPack	0.7	1.4
+GearPack	0.7	1.4
+"""
+
+DEFAULT_SEASON_PASS_TSV = """
+Step	RequiredPurpleStar	FreeReward_Type	FreeReward_Amount	PaidReward_Type	PaidReward_Amount
+1	0	StandardPackT1	1	StandardPackT3	1
+2	5	Spirit Stone	100	S-Stone	3
+3	10	CommonItem	10	GearPack	1
+4	15	Diamond	5	Diamond	25
+5	20	Coins	100	Blue Jokers	100
+6	25	Coins	50	Coins	150
+7	30	PetFood	300	PetPack	1
+8	35	Coins	50	Coins	150
+9	40	StandardPackT1	1	Gold Jokers	25
+10	45	StandardPackT2	1	StandardPackT2	1
+11	50	HeroTokens	300	HeroPack	1
+12	55	Diamond	5	Diamond	25
+13	60	CommonItem	10	GearPack	1
+14	65	Coins	50	Coins	150
+15	70	PetFood	250	Blue Jokers	100
+16	75	Coins	50	Coins	150
+17	80	PetFood	300	PetPack	1
+18	85	Diamond	5	Diamond	25
+19	90	StandardPackT1	1	Gold Jokers	25
+20	95	StandardPackT2	1	StandardPackT2	1
+21	100	HeroTokens	300	HeroPack	1
+22	105	Coins	100	Coins	150
+23	110	CommonItem	10	GearPack	1
+24	115	Coins	100	Coins	150
+25	120	Coins	100	Blue Jokers	100
+26	125	Diamond	5	Diamond	25
+27	130	PetFood	300	PetPack	1
+28	135	Coins	100	Coins	150
+29	140	StandardPackT1	1	Gold Jokers	25
+30	145	PetPack	1	StandardPackT4	1
+31	150	HeroTokens	300	HeroPack	1
+32	155	Designs	100	Coins	150
+33	160	CommonItem	10	GearPack	1
+34	165	Diamond	5	Diamond	25
+35	170	Coins	100	Blue Jokers	5
+36	175	Coins	100	Coins	150
+37	180	PetFood	300	PetPack	1
+38	185	Coins	100	Coins	150
+39	190	StandardPackT1	1	Gold Jokers	25
+40	195	StandardPackT2	1	Hero Unique Jokers	5
+41	200	HeroTokens	400	HeroPack	1
+42	205	Diamond	10	Diamond	50
+43	210	CommonItem	12	GearPack	1
+44	215	Coins	150	Coins	250
+45	220	Diamond	15	Blue Jokers	100
+46	225	Coins	150	Coins	250
+47	230	PetFood	500	PetPack	1
+48	235	Coins	150	Coins	250
+49	240	StandardPackT1	1	Gold Jokers	25
+50	245	HeroPack	1	StandardPackT4	1
+51	250	HeroTokens	400	HeroPack	1
+52	255	Diamond	10	Diamond	50
+53	260	CommonItem	12	GearPack	1
+54	265	Coins	200	Coins	250
+55	270	Diamond	15	Blue Jokers	100
+56	275	Coins	200	Coins	250
+57	280	PetFood	500	PetPack	1
+58	285	Coins	200	Coins	250
+59	290	HeroUpgradeCards	25	Gold Jokers	25
+60	295	StandardPackT2	1	StandardPackT2	1
+61	300	HeroTokens	400	HeroPack	1
+62	305	Diamond	10	Diamond	50
+63	310	CommonItem	12	GearPack	1
+64	315	Coins	200	Coins	250
+65	320	Diamond	15	Blue Jokers	100
+66	325	Coins	200	Coins	250
+67	330	PetFood	500	PetPack	1
+68	335	Designs	200	Coins	250
+69	340	StandardPackT1	1	Gold Jokers	25
+70	345	GearPack	1	Hero Unique Jokers	5
+71	350	HeroTokens	500	HeroPack	1
+72	355	Diamond	15	Diamond	75
+73	360	CommonItem	12	GearPack	1
+74	365	Coins	250	Coins	300
+75	370	Diamond	15	Blue Jokers	100
+76	375	Coins	250	Coins	300
+77	380	PetFood	1000	PetPack	1
+78	385	Spirit Stone	1000	Coins	300
+79	390	StandardPackT1	1	Gold Jokers	25
+80	395	StandardPackT3	1	S-Stone	1
+81	400	HeroTokens	500	HeroPack	1
+82	405	Diamond	15	Diamond	75
+83	410	CommonItem	12	GearPack	1
+84	415	HeroUpgradeCards	25	Coins	300
+85	420	Coins	250	Blue Jokers	100
+86	425	Coins	250	Coins	300
+87	430	PetFood	1000	PetPack	1
+88	435	Designs	200	Gold Jokers	25
+89	440	StandardPackT2	1	StandardPackT4	1
+90	445	EndOfChapterPack	1	Hero Unique Jokers	5
+"""
+
+DEFAULT_PSRACE_TSV = """
+Position	RewardType	RewardAmount
+1	HeroPack	2
+2	HeroPack	1
+3	StandardPackT2	1
+4	StandardPackT1	1
+5	HeroUpgradeCards	50
+6	HeroUpgradeCards	50
+7	HeroUpgradeCards	50
+8	HeroUpgradeCards	50
+9	HeroUpgradeCards	50
+10	HeroUpgradeCards	50
+11	HeroUpgradeCards	50
+12	HeroUpgradeCards	40
+13	HeroUpgradeCards	40
+14	HeroUpgradeCards	40
+15	HeroUpgradeCards	40
+16	HeroUpgradeCards	40
+17	HeroUpgradeCards	40
+18	HeroUpgradeCards	40
+19	HeroUpgradeCards	40
+20	HeroUpgradeCards	40
+21	HeroUpgradeCards	30
+22	HeroUpgradeCards	30
+23	HeroUpgradeCards	30
+24	HeroUpgradeCards	30
+25	HeroUpgradeCards	30
+26	HeroUpgradeCards	30
+27	HeroUpgradeCards	30
+28	HeroUpgradeCards	30
+29	HeroUpgradeCards	30
+30	HeroUpgradeCards	30
+31	HeroUpgradeCards	20
+32	HeroUpgradeCards	20
+33	HeroUpgradeCards	20
+34	HeroUpgradeCards	20
+35	HeroUpgradeCards	20
+36	HeroUpgradeCards	20
+37	HeroUpgradeCards	20
+38	HeroUpgradeCards	20
+39	HeroUpgradeCards	20
+40	HeroUpgradeCards	15
+41	HeroUpgradeCards	15
+42	HeroUpgradeCards	15
+43	HeroUpgradeCards	15
+44	HeroUpgradeCards	15
+45	HeroUpgradeCards	15
+46	HeroUpgradeCards	15
+47	HeroUpgradeCards	15
+48	HeroUpgradeCards	15
+49	HeroUpgradeCards	15
+50	HeroUpgradeCards	15
+"""
+
+DEFAULT_BATTLERUSH_TSV = """
+Stage	RewardType	RewardAmount
+1	Coins	500
+2	StandardPackT1	1
+3	Coins	700
+4	StandardPackT1	1
+5	Coins	1000
+6	StandardPackT2	1
+7	HeroPack	1
+"""
+
+DEFAULT_CUPRACE_TSV = """
+Position	RewardType1	RewardAmount1	RewardType2	RewardAmount2
+1	Designs	350	S-Stone	1
+2	Designs	315	GearPack	1
+3	Designs	280	GearPack	1
+4	Designs	175	GearPack	1
+5	Designs	105	GearPack	1
+6	Designs	105	GearPack	1
+7	Designs	105	GearPack	1
+8	Designs	105	GearPack	1
+9	Designs	105	GearPack	1
+10	Designs	105	GearPack	1
+11	Designs	70	StandardPackT2	2
+12	Designs	70	StandardPackT2	2
+13	Designs	70	StandardPackT2	2
+14	Designs	70	StandardPackT2	2
+15	Designs	70	StandardPackT2	2
+16	Designs	70	StandardPackT2	2
+17	Designs	70	StandardPackT2	2
+18	Designs	70	StandardPackT2	2
+19	Designs	70	StandardPackT2	2
+20	Designs	70	StandardPackT2	2
+21	Designs	52.5	StandardPackT2	1
+22	Designs	52.5	StandardPackT2	1
+23	Designs	52.5	StandardPackT2	1
+24	Designs	52.5	StandardPackT2	1
+25	Designs	52.5	StandardPackT2	1
+26	Designs	52.5	StandardPackT2	1
+27	Designs	52.5	StandardPackT2	1
+28	Designs	52.5	StandardPackT2	1
+29	Designs	52.5	StandardPackT2	1
+30	Designs	52.5	StandardPackT2	1
+31	Designs	35	StandardPackT1	1
+32	Designs	35	StandardPackT1	1
+33	Designs	35	StandardPackT1	1
+34	Designs	35	StandardPackT1	1
+35	Designs	35	StandardPackT1	1
+36	Designs	35	StandardPackT1	1
+37	Designs	35	StandardPackT1	1
+38	Designs	35	StandardPackT1	1
+39	Designs	35	StandardPackT1	1
+40	Designs	35	StandardPackT1	1
+41	Designs	17.5	StandardPackT1	0
+42	Designs	17.5	StandardPackT1	1
+43	Designs	17.5	StandardPackT1	1
+44	Designs	17.5	StandardPackT1	1
+45	Designs	17.5	StandardPackT1	1
+46	Designs	17.5	StandardPackT1	1
+47	Designs	17.5	StandardPackT1	1
+48	Designs	17.5	StandardPackT1	1
+49	Designs	17.5	StandardPackT1	1
+50	Designs	17.5	StandardPackT1	1
+"""
+
+DEFAULT_COLLECTEMALL_TSV = """
+Position	RewardType1	RewardAmount1
+1	StandardPackT3	1
+2	StandardPackT2	3
+3	StandardPackT2	2
+4	StandardPackT2	1
+5	StandardPackT2	1
+6	StandardPackT2	1
+7	StandardPackT2	1
+8	StandardPackT2	1
+9	StandardPackT2	1
+10	StandardPackT2	1
+11	StandardPackT1	1
+12	StandardPackT1	1
+13	StandardPackT1	1
+14	StandardPackT1	1
+15	StandardPackT1	1
+16	StandardPackT1	1
+17	StandardPackT1	1
+18	StandardPackT1	1
+19	StandardPackT1	1
+20	StandardPackT1	1
+"""
+
+DEFAULT_INFINITEWAVES_TSV = """
+Wave	Reward Type	Amount
+5	PetFood	20
+10	PetFood	40
+15	PetEgg	10
+20	Spirit Stone	20
+25	PetFood	30
+30	PetEgg	100
+35	Everstone	1
+40	Spirit Stone	50
+45	PetEgg	30
+50	PetFood	100
+55	Everstone	1
+60	PetEgg	100
+65	EverStone	2
+70	PetEgg	200
+75	PetPack	1
+80	Spirit Stone	150
+85	PetEgg	250
+90	PetPack	1
+95	Everstone	1
+100	PetEgg	300
+"""
+
+DEFAULT_INFINITEWAVES_LB_TSV = """
+Rank	RewardType	Amount
+1	Everstone	1
+2	Everstone	1
+3	Everstone	1
+4	Spirit Stone	1000
+5	Spirit Stone	1000
+6	Spirit Stone	1000
+7	Spirit Stone	1000
+8	Spirit Stone	1000
+9	Spirit Stone	1000
+10	Spirit Stone	1000
+11	Spirit Stone	500
+12	Spirit Stone	500
+13	Spirit Stone	500
+14	Spirit Stone	500
+15	Spirit Stone	500
+16	Spirit Stone	500
+17	Spirit Stone	500
+18	Spirit Stone	500
+19	Spirit Stone	500
+20	Spirit Stone	500
+"""
+
+DEFAULT_HERO_UNLOCK_TSV = """
+Day	New Unique Cards
+1	0
+10	7
+20	7
+30	7
+40	7
+50	7
+60	7
+70	7
+80	7
+90	7
+100	11
+"""
+
 
 # --- HELPER FUNCTIONS ---
 
-@st.cache_data(ttl=600)  # Cache data for 10 minutes
-def load_all_data():
-    """Loads all data from the Google Sheet."""
+def parse_tsv(tsv_string):
+    """Parses a TSV string from st.text_area into a DataFrame."""
     try:
-        # Create connection
-        conn = st.connection("gsheets", type=GSheetsConnection)
-        
-        # Define all the worksheet names
-        worksheet_names = [
-            'Chapters', 'PowerTiers', 'CardBlueCommon', 'CardGold', 'CardUnique',
-            'DupeGrantShared', 'DupeGrantUnique', 'PackEvolution', 'PackLootSlots',
-            'PackCardDraws', 'PackCardBoosts', 'PackLootProbs', 'PackLootAmounts',
-            'PackLootVariance', 'SeasonPass', 'PSRace', 'BattleRush', 'CupRace',
-            'CollectEmAll', 'InfWaves', 'InfWavesLB', 'HeroUnlocks'
-        ]
-        
-        # Read all worksheets into a dictionary of DataFrames
-        df_dict = conn.read_all(worksheet_names=worksheet_names)
-        
-        # --- Process and structure the data ---
-        data = {}
-        
-        data['chapters'] = df_dict['Chapters'].set_index('Chapter')
-        data['power_multipliers'] = df_dict['PowerTiers']
+        return pd.read_csv(io.StringIO(tsv_string), sep='\t')
+    except Exception as e:
+        st.error(f"Error parsing TSV data: {e}")
+        return pd.DataFrame()
+
+@st.cache_data
+def load_all_data(data_dfs):
+    """Loads all DataFrames from session_state into a structured dict."""
+    data = {}
+    try:
+        data['chapters'] = data_dfs['chapters'].set_index('Chapter')
+        data['power_multipliers'] = data_dfs['power_multipliers']
         
         # Card Upgrade Tables
         data['card_upgrades'] = {
-            'blue_common': df_dict['CardBlueCommon'].set_index('Level'),
-            'gold': df_dict['CardGold'].set_index('Level'),
-            'unique': df_dict['CardUnique'].set_index('Level')
+            'blue_common': data_dfs['card_blue_common'].set_index('Level'),
+            'gold': data_dfs['card_gold'].set_index('Level'),
+            'unique': data_dfs['card_unique'].set_index('Level')
         }
         
         # Card Duplicate Grant Tables
         data['dupe_grant'] = {
-            'shared': df_dict['DupeGrantShared'].set_index('CardLevel'),
-            'unique': df_dict['DupeGrantUnique'].set_index('CardLevel')
+            'shared': data_dfs['dupe_grant_shared'].set_index('CardLevel'),
+            'unique': data_dfs['dupe_grant_unique'].set_index('CardLevel')
         }
         
         # Pack Data
-        data['pack_evolution'] = df_dict['PackEvolution'].set_index('StartingRarity')
-        data['pack_loot_slots'] = df_dict['PackLootSlots'].set_index('Pack')
+        data['pack_evolution'] = data_dfs['pack_evolution'].set_index('StartingRarity')
+        data['pack_loot_slots'] = data_dfs['pack_loot_slots'].set_index('Pack')
         
         # Handle the card draw table (it has a multi-level index)
-        df_draws = df_dict['PackCardDraws']
+        df_draws = data_dfs['pack_card_draws']
         df_draws['Unlocked Card Count'] = df_draws['Unlocked Card Count'].fillna(method='ffill')
         data['pack_card_draws'] = df_draws.set_index(['Pack', 'Unlocked Card Count'])
         
-        data['pack_card_boosts'] = df_dict['PackCardBoosts'].set_index('Pack')
-        data['pack_loot_probs'] = df_dict['PackLootProbs'].set_index('Pack')
-        data['pack_loot_amounts'] = df_dict['PackLootAmounts'].set_index('Pack')
-        data['pack_loot_variance'] = df_dict['PackLootVariance'].set_index('Pack')
+        data['pack_card_boosts'] = data_dfs['pack_card_boosts'].set_index('Pack')
+        data['pack_loot_probs'] = data_dfs['pack_loot_probs'].set_index('Pack')
+        data['pack_loot_amounts'] = data_dfs['pack_loot_amounts'].set_index('Pack')
+        data['pack_loot_variance'] = data_dfs['pack_loot_variance'].set_index('Pack')
         
         # LiveOps and Season Pass
-        data['season_pass'] = df_dict['SeasonPass'].set_index('Step')
-        data['psrace'] = df_dict['PSRace'].set_index('Position')
-        data['battlerush'] = df_dict['BattleRush'].set_index('Stage')
-        data['cuprace'] = df_dict['CupRace'].set_index('Position')
-        data['collectemall'] = df_dict['CollectEmAll'].set_index('Position')
-        data['infwaves'] = df_dict['InfWaves'].set_index('Wave')
-        data['infwaves_lb'] = df_dict['InfWavesLB'].set_index('Rank')
-        
-        # This will be used by the config, not the data dict
-        data['hero_unlocks'] = df_dict['HeroUnlocks'] 
+        data['season_pass'] = data_dfs['season_pass'].set_index('Step')
+        data['psrace'] = data_dfs['psrace'].set_index('Position')
+        data['battlerush'] = data_dfs['battlerush'].set_index('Stage')
+        data['cuprace'] = data_dfs['cuprace'].set_index('Position')
+        data['collectemall'] = data_dfs['collectemall'].set_index('Position')
+        data['infwaves'] = data_dfs['infwaves'].set_index('Wave')
+        data['infwaves_lb'] = data_dfs['infwaves_lb'].set_index('Rank')
         
         return data
     except Exception as e:
-        st.error(f"Error loading data from Google Sheets: {e}")
-        st.error("Please check your Google Sheet sharing settings and tab names.")
+        st.error(f"Error processing data tables: {e}")
+        st.error("Please ensure your data tables are formatted correctly, especially the headers.")
         return None
 
 # --- THE SIMULATION ENGINE ---
@@ -128,12 +781,6 @@ class PlayerState:
         
         # Logging
         self.results_log = []
-    
-    # ... (Rest of the PlayerState class from the previous answer) ...
-    # ... (run_simulation, run_day, grant_daily_rewards, etc... ALL THE SAME) ...
-    
-    # (Paste the entire rest of the PlayerState class here)
-    # (from run_simulation() all the way to log_state())
 
     def run_simulation(self):
         """Runs the full simulation for the specified number of days."""
@@ -246,11 +893,11 @@ class PlayerState:
                 new_cards = new_cards_entries['New Unique Cards']
             else:
                 new_cards = new_cards_entries['New Unique Cards'].sum()
-
+                
             current_max = len(self.card_pool['unique'])
-            for i in range(1, new_cards + 1):
+            for i in range(1, int(new_cards) + 1):
                 self.card_pool['unique'].append(f'u_{current_max + i}')
-            self.unlocked_card_count += new_cards
+            self.unlocked_card_count += int(new_cards)
 
     def process_packs(self):
         """Opens all packs in the queue."""
@@ -329,13 +976,20 @@ class PlayerState:
             # Get upgrade info for NEXT level
             upgrade_table_name = 'unique' if card_type == 'unique' else 'blue_common' if card_type == 'blue_common' else 'gold'
             dupe_grant_table_name = 'unique' if card_type == 'unique' else 'shared'
+            
+            upgrade_table = self.data['card_upgrades'][upgrade_table_name]
+            next_level = current_level + 1
 
             try:
-                upgrade_info = self.data['card_upgrades'][upgrade_table_name].loc[current_level + 1]
+                if next_level not in upgrade_table.index:
+                    continue # Card is max level
+                
+                upgrade_info = upgrade_table.loc[next_level]
                 dupes_required = upgrade_info['Duplicates Required']
                 
                 # Get base grant %
                 grant_info = self.data['dupe_grant'][dupe_grant_table_name]
+                # Find the rule for the current level or the highest one below it
                 base_grant_perc = grant_info[grant_info.index <= current_level].iloc[-1]['AvrgDupReq']
                 
                 # Get pack boost
@@ -346,8 +1000,12 @@ class PlayerState:
                 total_dupes = math.ceil(dupes_required * (base_grant_perc + boost_perc))
                 self.card_duplicates[card_name] += total_dupes
                 
+            except IndexError:
+                # This can happen if card level is 1 and no rule exists for level 1
+                st.warning(f"No dupe grant rule found for {card_type} card at level {current_level}")
             except KeyError:
-                pass # Card is max level
+                # This happens if card is max level (next_level doesn't exist)
+                pass 
 
     def pick_random_card(self):
         """Picks a random card from the available pool."""
@@ -377,7 +1035,11 @@ class PlayerState:
         if pd.isna(item_type) or amount == 0:
             return
             
-        amount = int(round(float(amount))) # Ensure amount is a rounded integer
+        try:
+            amount = int(round(float(amount))) # Ensure amount is a rounded integer
+        except ValueError:
+            return # Skip if amount is not a number
+
         if "Pack" in str(item_type):
             self.packs_to_open.extend([item_type] * amount)
         else:
@@ -388,7 +1050,8 @@ class PlayerState:
         upgraded_something = True
         while upgraded_something:
             upgraded_something = False
-            for card_name, current_level in self.card_levels.items():
+            # We must iterate over a copy, as self.card_levels can change
+            for card_name, current_level in list(self.card_levels.items()):
                 card_type = 'unique' if 'u_' in card_name else 'gold' if 'g_' in card_name else 'blue_common'
                 upgrade_table = self.data['card_upgrades'][card_type]
                 
@@ -457,47 +1120,12 @@ class PlayerState:
 def main_app():
     st.set_page_config(layout="wide")
     st.title("📈 Roguelike Economy Simulator")
-    
-    # Load all data from GSheets at the start
-    all_data = load_all_data()
 
     # --- SIDEBAR (Inputs) ---
     with st.sidebar:
         st.header("Simulation Config")
         
-        if 'all_data' not in st.session_state:
-            if all_data:
-                st.session_state.all_data = all_data
-            else:
-                st.error("Failed to load data. App cannot run.")
-                return
-
-        if st.button("Run Simulation", type="primary"):
-            # 1. Collate all config
-            config = {
-                'sim_days': st.session_state.sim_days,
-                'is_paid_player': st.session_state.is_paid_player,
-                'starting_base_power': st.session_state.starting_base_power,
-                'daily_purple_stars': st.session_state.daily_purple_stars,
-                'hero_unlocks': st.session_state.all_data['hero_unlocks'], # Get from loaded data
-                'ps_rank': st.session_state.ps_rank,
-                'cup_rank': st.session_state.cup_rank,
-                'collect_rank': st.session_state.collect_rank,
-                'battlerush_stage': st.session_state.battlerush_stage,
-                'infwaves_wave': st.session_state.infwaves_wave,
-                'infwaves_rank': st.session_state.infwaves_rank
-            }
-            
-            # 2. Run sim
-            with st.spinner(f"Running simulation for {config['sim_days']} days..."):
-                player = PlayerState(config, st.session_state.all_data)
-                results_log, final_inventory = player.run_simulation()
-                
-                # 3. Save to session state
-                st.session_state.results = results_log
-                st.session_state.inventory = final_inventory
-            st.success("Simulation Complete!")
-        
+        # --- General Settings ---
         st.subheader("General Settings")
         st.number_input("Simulation Days", 1, 1000, 365, key="sim_days")
         st.toggle("Paid Season Pass Player?", value=True, key="is_paid_player")
@@ -514,13 +1142,102 @@ def main_app():
         st.slider("Infinite Waves Reached (Every 2 Days)", 0, 100, 50, key="infwaves_wave")
         st.slider("Infinite Waves Rank (Every 2 Days)", 1, 20, 10, key="infwaves_rank")
         
-        st.caption("All economy data (packs, cards, etc.) is loaded from the connected Google Sheet. Edit the sheet to see changes here.")
+        # --- Data Tables (Now using st.data_editor) ---
+        with st.expander("Edit All Economy Data"):
+            st.caption("Changes made here are temporary for this session.")
+            st.subheader("Progression")
+            st.data_editor(parse_tsv(DEFAULT_CHAPTERS_TSV), key="chapters_data", num_rows="dynamic")
+            st.data_editor(parse_tsv(DEFAULT_PM_TIERS_TSV), key="pm_tiers_data", num_rows="dynamic")
+            st.data_editor(parse_tsv(DEFAULT_HERO_UNLOCK_TSV), key="hero_unlocks_data", num_rows="dynamic")
+
+            st.subheader("Card Upgrades")
+            st.data_editor(parse_tsv(DEFAULT_CARD_BLUE_COMMON_TSV), key="card_blue_common_data", num_rows="dynamic")
+            st.data_editor(parse_tsv(DEFAULT_CARD_GOLD_TSV), key="card_gold_data", num_rows="dynamic")
+            st.data_editor(parse_tsv(DEFAULT_CARD_UNIQUE_TSV), key="card_unique_data", num_rows="dynamic")
+
+            st.subheader("Card Duplicate Grants")
+            st.data_editor(parse_tsv(DEFAULT_DUPE_GRANT_SHARED_TSV), key="dupe_grant_shared_data", num_rows="dynamic")
+            st.data_editor(parse_tsv(DEFAULT_DUPE_GRANT_UNIQUE_TSV), key="dupe_grant_unique_data", num_rows="dynamic")
+
+            st.subheader("Pack Logic")
+            st.data_editor(parse_tsv(DEFAULT_PACK_EVOLUTION_TSV), key="pack_evolution_data")
+            st.data_editor(parse_tsv(DEFAULT_PACK_LOOT_SLOTS_TSV), key="pack_loot_slots_data", num_rows="dynamic")
+            st.data_editor(parse_tsv(DEFAULT_PACK_CARD_DRAWS_TSV), key="pack_card_draws_data", num_rows="dynamic")
+            st.data_editor(parse_tsv(DEFAULT_PACK_CARD_BOOSTS_TSV), key="pack_card_boosts_data", num_rows="dynamic")
+
+            st.subheader("Pack Loot Tables")
+            st.data_editor(parse_tsv(DEFAULT_PACK_LOOT_PROBS_TSV), key="pack_loot_probs_data")
+            st.data_editor(parse_tsv(DEFAULT_PACK_LOOT_AMOUNTS_TSV), key="pack_loot_amounts_data")
+            st.data_editor(parse_tsv(DEFAULT_PACK_LOOT_VARIANCE_TSV), key="pack_loot_variance_data")
+
+            st.subheader("Rewards")
+            st.data_editor(parse_tsv(DEFAULT_SEASON_PASS_TSV), key="season_pass_data", num_rows="dynamic")
+            st.data_editor(parse_tsv(DEFAULT_PSRACE_TSV), key="psrace_data", num_rows="dynamic")
+            st.data_editor(parse_tsv(DEFAULT_BATTLERUSH_TSV), key="battlerush_data", num_rows="dynamic")
+            st.data_editor(parse_tsv(DEFAULT_CUPRACE_TSV), key="cuprace_data", num_rows="dynamic")
+            st.data_editor(parse_tsv(DEFAULT_COLLECTEMALL_TSV), key="collectemall_data", num_rows="dynamic")
+            st.data_editor(parse_tsv(DEFAULT_INFINITEWAVES_TSV), key="infwaves_data", num_rows="dynamic")
+            st.data_editor(parse_tsv(DEFAULT_INFINITEWAVES_LB_TSV), key="infwaves_lb_data", num_rows="dynamic")
+        
+        # --- Run Button ---
+        if st.button("Run Simulation", type="primary"):
+            # 1. Collate all data from session_state (where data_editors live)
+            with st.spinner("Loading data..."):
+                data_dfs = {
+                    'chapters': st.session_state.chapters_data,
+                    'power_multipliers': st.session_state.pm_tiers_data,
+                    'card_blue_common': st.session_state.card_blue_common_data,
+                    'card_gold': st.session_state.card_gold_data,
+                    'card_unique': st.session_state.card_unique_data,
+                    'dupe_grant_shared': st.session_state.dupe_grant_shared_data,
+                    'dupe_grant_unique': st.session_state.dupe_grant_unique_data,
+                    'pack_evolution': st.session_state.pack_evolution_data,
+                    'pack_loot_slots': st.session_state.pack_loot_slots_data,
+                    'pack_card_draws': st.session_state.pack_card_draws_data,
+                    'pack_card_boosts': st.session_state.pack_card_boosts_data,
+                    'pack_loot_probs': st.session_state.pack_loot_probs_data,
+                    'pack_loot_amounts': st.session_state.pack_loot_amounts_data,
+                    'pack_loot_variance': st.session_state.pack_loot_variance_data,
+                    'season_pass': st.session_state.season_pass_data,
+                    'psrace': st.session_state.psrace_data,
+                    'battlerush': st.session_state.battlerush_data,
+                    'cuprace': st.session_state.cuprace_data,
+                    'collectemall': st.session_state.collectemall_data,
+                    'infwaves': st.session_state.infwaves_data,
+                    'infwaves_lb': st.session_state.infwaves_lb_data
+                }
+                all_data = load_all_data(data_dfs)
+            
+            # 2. Collate all config
+            if all_data:
+                config = {
+                    'sim_days': st.session_state.sim_days,
+                    'is_paid_player': st.session_state.is_paid_player,
+                    'starting_base_power': st.session_state.starting_base_power,
+                    'daily_purple_stars': st.session_state.daily_purple_stars,
+                    'hero_unlocks': st.session_state.hero_unlocks_data, # Pass the DataFrame
+                    'ps_rank': st.session_state.ps_rank,
+                    'cup_rank': st.session_state.cup_rank,
+                    'collect_rank': st.session_state.collect_rank,
+                    'battlerush_stage': st.session_state.battlerush_stage,
+                    'infwaves_wave': st.session_state.infwaves_wave,
+                    'infwaves_rank': st.session_state.infwaves_rank
+                }
+                
+                # 3. Run sim
+                with st.spinner(f"Running simulation for {config['sim_days']} days..."):
+                    player = PlayerState(config, all_data)
+                    results_log, final_inventory = player.run_simulation()
+                    
+                    # 4. Save to session state
+                    st.session_state.results = results_log
+                    st.session_state.inventory = final_inventory
+                st.success("Simulation Complete!")
 
 
     # --- MAIN PAGE (Outputs) ---
     if "results" not in st.session_state:
         st.info("Configure your inputs in the sidebar and press 'Run Simulation'.")
-        st.info("Data is loaded live from your connected Google Sheet.")
     else:
         results = st.session_state.results
         inventory = st.session_state.inventory
